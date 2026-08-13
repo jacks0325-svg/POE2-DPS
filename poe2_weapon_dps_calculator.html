@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POE2 武器 DPS 計算器</title>
+<style>
+  :root {
+    --bg:#111318; --panel:#1b1e25; --panel2:#222630; --text:#f2f3f5;
+    --muted:#a8adb8; --line:#383e4b; --accent:#d6a84f; --good:#6fd08c;
+    --bad:#ef7777; --phys:#c8c8c8; --lightning:#f1d34a; --fire:#ef704f; --cold:#73b9ed;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:linear-gradient(135deg,#101217,#171a21);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Noto Sans TC",sans-serif}
+  .wrap{max-width:1100px;margin:auto;padding:28px 18px 45px}
+  h1{margin:0 0 7px;font-size:30px;letter-spacing:.5px}
+  .sub{color:var(--muted);margin-bottom:24px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .panel{background:rgba(27,30,37,.96);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 12px 35px rgba(0,0,0,.2)}
+  .weapon-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:15px}
+  .weapon-title h2{margin:0;font-size:21px}
+  .tag{font-size:12px;color:#161616;background:var(--accent);padding:4px 9px;border-radius:999px;font-weight:700}
+  .section{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}
+  .section h3{font-size:14px;color:var(--muted);margin:0 0 11px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}
+  input{width:100%;background:#12151a;border:1px solid #424956;color:var(--text);border-radius:9px;padding:10px 11px;font-size:15px;outline:none}
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(214,168,79,.12)}
+  .element{margin-top:11px;padding:11px;border-radius:10px;background:var(--panel2)}
+  .element-title{font-size:13px;font-weight:700;margin-bottom:8px}
+  .phys .element-title{color:var(--phys)} .lightning .element-title{color:var(--lightning)}
+  .fire .element-title{color:var(--fire)} .cold .element-title{color:var(--cold)}
+  .result{margin-top:18px;background:#12151a;border:1px solid var(--line);border-radius:12px;padding:15px}
+  .result-line{display:flex;justify-content:space-between;gap:10px;padding:5px 0;color:var(--muted)}
+  .result-line strong{color:var(--text)}
+  .total{font-size:24px;font-weight:800;color:var(--accent);margin-top:8px;padding-top:12px;border-top:1px solid var(--line)}
+  .compare{margin-top:18px;background:linear-gradient(135deg,#211e16,#191a1f);border:1px solid #5b4b2b;border-radius:16px;padding:22px;text-align:center}
+  .compare h2{margin:0 0 12px;font-size:18px}
+  .winner{font-size:28px;font-weight:900;margin:7px 0}
+  .delta{font-size:16px;color:var(--muted)}
+  .help{margin-top:18px;color:var(--muted);font-size:13px;line-height:1.7}
+  button{margin-top:12px;border:0;border-radius:9px;padding:9px 12px;background:#343a47;color:white;cursor:pointer}
+  button:hover{background:#424958}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}.wrap{padding:20px 12px}.total{font-size:22px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚔️ POE2 武器 DPS 計算器</h1>
+  <div class="sub">輸入兩把武器的傷害與攻速，快速比較實際的平均每秒傷害。</div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="weapon-title"><h2>武器 A</h2><span class="tag">目前武器</span></div>
+      <div id="weaponA"></div>
+    </div>
+    <div class="panel">
+      <div class="weapon-title"><h2>武器 B</h2><span class="tag">候選武器</span></div>
+      <div id="weaponB"></div>
+    </div>
+  </div>
+
+  <div class="compare" id="compare">
+    <h2>🏆 武器比較</h2>
+    <div class="winner">請輸入武器資料</div>
+    <div class="delta">兩把武器的總 DPS 將在這裡比較</div>
+  </div>
+
+  <div class="help">
+    <b>計算方式</b><br>
+    物理 DPS =（物理最小傷害 + 物理最大傷害）÷ 2 × 攻擊次數／秒<br>
+    元素 DPS =（電平均傷害 + 火平均傷害 + 冰平均傷害）× 攻擊次數／秒<br>
+    總傷害 DPS = 物理 DPS + 元素 DPS
+  </div>
+</div>
+
+<script>
+const weapons = {
+  A: {name:"A", data:{pmin:0,pmax:0,aspd:1,emin:0,emax:0,fmin:0,fmax:0,cmin:0,cmax:0}},
+  B: {name:"B", data:{pmin:0,pmax:0,aspd:1,emin:0,emax:0,fmin:0,fmax:0,cmin:0,cmax:0}}
+};
+
+function field(id,label,value){
+  return `<div><label for="${id}">${label}</label><input id="${id}" type="number" step="0.01" min="0" value="${value}"></div>`;
+}
+
+function buildWeapon(key){
+  const d=weapons[key].data, root=document.getElementById("weapon"+key);
+  root.innerHTML=`
+    <div class="section" style="border-top:0;padding-top:0;margin-top:0">
+      <h3>⚔️ 物理傷害</h3>
+      <div class="row">
+        ${field(key+"-pmin","最小物理傷害",d.pmin)}
+        ${field(key+"-pmax","最大物理傷害",d.pmax)}
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>⚡🔥❄️ 元素傷害</h3>
+      <div class="element lightning">
+        <div class="element-title">⚡ 電擊傷害</div>
+        <div class="row">${field(key+"-emin","最小",d.emin)}${field(key+"-emax","最大",d.emax)}</div>
+      </div>
+      <div class="element fire">
+        <div class="element-title">🔥 火焰傷害</div>
+        <div class="row">${field(key+"-fmin","最小",d.fmin)}${field(key+"-fmax","最大",d.fmax)}</div>
+      </div>
+      <div class="element cold">
+        <div class="element-title">❄️ 冰冷傷害</div>
+        <div class="row">${field(key+"-cmin","最小",d.cmin)}${field(key+"-cmax","最大",d.cmax)}</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>⏱️ 攻擊速度</h3>
+      ${field(key+"-aspd","每秒攻擊次數（攻速）",d.aspd)}
+    </div>
+
+    <div class="result">
+      <div class="result-line"><span>物理 DPS</span><strong id="${key}-phys">0.00</strong></div>
+      <div class="result-line"><span>⚡ 電 DPS</span><strong id="${key}-ele">0.00</strong></div>
+      <div class="result-line"><span>🔥 火 DPS</span><strong id="${key}-fire">0.00</strong></div>
+      <div class="result-line"><span>❄️ 冰 DPS</span><strong id="${key}-cold">0.00</strong></div>
+      <div class="result-line"><span>元素總 DPS</span><strong id="${key}-elements">0.00</strong></div>
+      <div class="total">總傷害 DPS：<span id="${key}-total">0.00</span></div>
+    </div>
+    <button onclick="clearWeapon('${key}')">清除這把武器</button>
+  `;
+  root.querySelectorAll("input").forEach(i=>i.addEventListener("input",()=>calculate(key)));
+}
+
+function n(key,suffix){ return Math.max(0,parseFloat(document.getElementById(key+"-"+suffix).value)||0); }
+
+function calculate(key){
+  const pmin=n(key,"pmin"), pmax=n(key,"pmax"), aspd=n(key,"aspd");
+  const emin=n(key,"emin"), emax=n(key,"emax");
+  const fmin=n(key,"fmin"), fmax=n(key,"fmax");
+  const cmin=n(key,"cmin"), cmax=n(key,"cmax");
+
+  const phys=((pmin+pmax)/2)*aspd;
+  const ele=((emin+emax)/2)*aspd;
+  const fire=((fmin+fmax)/2)*aspd;
+  const cold=((cmin+cmax)/2)*aspd;
+  const elements=ele+fire+cold;
+  const total=phys+elements;
+
+  document.getElementById(key+"-phys").textContent=phys.toFixed(2);
+  document.getElementById(key+"-ele").textContent=ele.toFixed(2);
+  document.getElementById(key+"-fire").textContent=fire.toFixed(2);
+  document.getElementById(key+"-cold").textContent=cold.toFixed(2);
+  document.getElementById(key+"-elements").textContent=elements.toFixed(2);
+  document.getElementById(key+"-total").textContent=total.toFixed(2);
+  compare();
+}
+
+function total(key){return parseFloat(document.getElementById(key+"-total").textContent)||0}
+
+function compare(){
+  const a=total("A"), b=total("B"), box=document.getElementById("compare");
+  if(a===0 && b===0){
+    box.innerHTML="<h2>🏆 武器比較</h2><div class='winner'>請輸入武器資料</div><div class='delta'>兩把武器的總 DPS 將在這裡比較</div>";
+    return;
+  }
+  if(a===b){
+    box.innerHTML=`<h2>🏆 武器比較</h2><div class="winner">兩把武器 DPS 相同</div><div class="delta">武器 A：${a.toFixed(2)}　｜　武器 B：${b.toFixed(2)}</div>`;
+    return;
+  }
+  const winner=b>a?"武器 B":"武器 A", high=Math.max(a,b), low=Math.min(a,b);
+  const pct=low>0?((high-low)/low*100):100;
+  box.innerHTML=`<h2>🏆 武器比較</h2><div class="winner">${winner} 較強</div><div class="delta">A：${a.toFixed(2)} DPS　｜　B：${b.toFixed(2)} DPS<br><b>高出 ${pct.toFixed(2)}%</b></div>`;
+}
+
+function clearWeapon(key){
+  const defaults={pmin:0,pmax:0,aspd:1,emin:0,emax:0,fmin:0,fmax:0,cmin:0,cmax:0};
+  Object.entries(defaults).forEach(([s,v])=>document.getElementById(key+"-"+s).value=v);
+  calculate(key);
+}
+
+buildWeapon("A"); buildWeapon("B"); calculate("A"); calculate("B");
+</script>
+</body>
+</html>
